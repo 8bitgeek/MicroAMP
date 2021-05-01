@@ -1,5 +1,16 @@
 // Include MicroPython API.
 #include "py/runtime.h"
+#include <brisc_thread.h>
+
+// This is the function which will be called from Python as microamp.open(a).
+STATIC mp_obj_t microamp_get_ticks() {
+
+    // Get a new channel handle.
+    return mp_obj_new_int((int)b_thread_systick());
+}
+// Define a Python reference to the function above.
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(microamp_get_ticks_obj, microamp_get_ticks);
+
 
 // This is the function which will be called from Python as microamp.add_ints(a, b).
 STATIC mp_obj_t microamp_add_ints(mp_obj_t a_obj, mp_obj_t b_obj) {
@@ -13,6 +24,7 @@ STATIC mp_obj_t microamp_add_ints(mp_obj_t a_obj, mp_obj_t b_obj) {
 // Define a Python reference to the function above.
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(microamp_add_ints_obj, microamp_add_ints);
 
+
 // Define all properties of the module.
 // Table entries are key/value pairs of the attribute name (a string)
 // and the MicroPython object reference.
@@ -20,6 +32,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_2(microamp_add_ints_obj, microamp_add_ints);
 // optimized to word-sized integers by the build system (interned strings).
 STATIC const mp_rom_map_elem_t microamp_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_microamp) },
+    { MP_ROM_QSTR(MP_QSTR_get_ticks), MP_ROM_PTR(&microamp_get_ticks_obj) },
     { MP_ROM_QSTR(MP_QSTR_add_ints), MP_ROM_PTR(&microamp_add_ints_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(microamp_module_globals, microamp_module_globals_table);
