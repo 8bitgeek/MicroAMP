@@ -88,6 +88,7 @@ int microamp_create(microamp_state_t* microamp_state,const char* name,size_t siz
             if ( endpoint != NULL )
             {
                 int index = microamp_state->endpointcnt-1;
+                strncpy(endpoint->name,name,MICROAMP_MAX_NAME);
                 endpoint->shmembase = microamp_shmem_page(index);
                 endpoint->shmemsz = size;
                 b_mutex_unlock(&microamp_state->mutex);
@@ -173,25 +174,29 @@ extern int microamp_trylock(microamp_state_t* microamp_state,int nhandle)
 
 extern int microamp_read(microamp_state_t* microamp_state,int nhandle,void* buf,size_t size)
 {
+    microamp_handle_t* handle;
     b_mutex_lock(&microamp_state->mutex);
     if ( nhandle >= 0 && nhandle < MICROAMP_MAX_HANDLE )
     {
-        microamp_handle_t* handle = &microamp_state->handle[nhandle];
-        if ( handle->endpoint != NULL && handle->endpoint->nrefs > 0 )
+        handle = &microamp_state->handle[nhandle];
+        if ( handle->endpoint )
         {
             uint8_t* p = (uint8_t*)buf;
             for(int n=0; n < size; n++)
             {
-                if ( microamp_ring_get( handle->head,
+                int t;
+                if ( (t=microamp_ring_get( handle->head,
                                         handle->tail,
                                         (void*)handle->endpoint->shmembase,
                                         handle->endpoint->shmemsz,&p[n]
-                                        ) < 0 )
+                                        )) < 0 )
                 {
                     b_mutex_unlock(&microamp_state->mutex);
                     return MICROAMP_ERR_UNDFL;
                 }
+                handle->tail = t;
             }
+            return size;
         }
     }
     b_mutex_unlock(&microamp_state->mutex);
@@ -200,25 +205,29 @@ extern int microamp_read(microamp_state_t* microamp_state,int nhandle,void* buf,
 
 extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const void* buf,size_t size)
 {
+    microamp_handle_t* handle;
     b_mutex_lock(&microamp_state->mutex);
     if ( nhandle >= 0 && nhandle < MICROAMP_MAX_HANDLE )
     {
-        microamp_handle_t* handle = &microamp_state->handle[nhandle];
-        if ( handle->endpoint != NULL && handle->endpoint->nrefs > 0 )
+        handle = &microamp_state->handle[nhandle];
+        if ( handle->endpoint )
         {
             uint8_t* p = (uint8_t*)buf;
             for(int n=0; n < size; n++)
             {
-                if ( microamp_ring_put( handle->head,
+                int h;
+                if ( (h=microamp_ring_put( handle->head,
                                         handle->tail,
                                         (void*)handle->endpoint->shmembase,
                                         handle->endpoint->shmemsz,p[n]
-                                        ) < 0 )
+                                        )) < 0 )
                 {
                     b_mutex_unlock(&microamp_state->mutex);
                     return MICROAMP_ERR_OVRFL;
                 }
+                handle->head = h;
             }
+            return size;
         }
     }
     b_mutex_unlock(&microamp_state->mutex);
@@ -474,7 +483,7 @@ STATIC mp_obj_t microamp_py_read(mp_obj_t handle_obj,mp_obj_t buffer_obj,mp_obj_
         size_t buffer_len;
         int handle = mp_obj_get_int(handle_obj);
         uint8_t* buffer = (uint8_t*)mp_obj_str_get_data(buffer_obj,&buffer_len);
-        size_t size = mp_obj_get_int(handle_obj);
+        size_t size = mp_obj_get_int(size_obj);
         return mp_obj_new_int( microamp_read(g_microamp_state,handle,buffer,size) );
     }
     return mp_obj_new_int(MICROAMP_ERR_INVAL);
@@ -497,7 +506,7 @@ STATIC mp_obj_t microamp_py_write(mp_obj_t handle_obj,mp_obj_t buffer_obj,mp_obj
         size_t buffer_len;
         int handle = mp_obj_get_int(handle_obj);
         const uint8_t* buffer = (const uint8_t*)mp_obj_str_get_data(buffer_obj,&buffer_len);
-        size_t size = mp_obj_get_int(handle_obj);
+        size_t size = mp_obj_get_int(size_obj);
         return mp_obj_new_int( microamp_write(g_microamp_state,handle,buffer,size) );
     }
     return mp_obj_new_int(MICROAMP_ERR_INVAL);
