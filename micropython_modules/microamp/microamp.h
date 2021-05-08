@@ -62,6 +62,16 @@ extern "C"
 #define MICROAMP_ERR_INVAL  -8  /**< Invalid Input */
 
 /** *************************************************************************  
+ * \brief maintains the state of an endpoint callback.
+****************************************************************************/
+typedef struct _microamp_callback_
+{
+    mp_obj_t                    cb_fn;
+    mp_obj_t                    cb_arg;
+    volatile brisc_thread_t*    cb_thread;
+} microamp_callback_t;
+
+/** *************************************************************************  
  * \brief maintains the state of an endpoint.
 ****************************************************************************/
 typedef struct _microamp_endpoint_
@@ -73,6 +83,7 @@ typedef struct _microamp_endpoint_
     size_t          nrefs;
     size_t          head;
     size_t          tail;
+    microamp_callback_t     callback;
 } microamp_endpoint_t;
 
 /** *************************************************************************  
@@ -93,6 +104,11 @@ typedef struct _microamp_state_
     brisc_mutex_t           mutex;
     microamp_handle_t       handle[MICROAMP_MAX_HANDLE];
 } microamp_state_t;
+
+/** *************************************************************************  
+*************************** Poll For I/O Events ***************************** 
+****************************************************************************/
+extern void microamp_poll_hook(void);
 
 /** *************************************************************************  
  * \brief Initialize MicroAMP state

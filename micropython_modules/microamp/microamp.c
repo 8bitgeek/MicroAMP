@@ -61,6 +61,29 @@ static microamp_state_t* g_microamp_state=NULL;
 
 
 /** *************************************************************************  
+*************************** Poll For I/O Events ***************************** 
+****************************************************************************/
+void microamp_poll_hook(void)
+{
+
+    for(int nenadpoint=0; nenadpoint < g_microamp_state->endpointcnt; nenadpoint++)
+    {
+        microamp_endpoint_t* endpoint = &g_microamp_state->endpoint[nenadpoint];
+        if ( endpoint->callback.cb_fn )
+        {
+            size_t avail;
+            brisc_mutex_lock(&endpoint->->mutex);
+            avail = microamp_ring_avail(endpoint->head,endpoint->tail,endpoint->shmemsz);
+            if ( avail )
+            {
+                mp_call_function_1(endpoint->callback.cb_fn,endpoint->callback.cb_arg);
+            }
+        }
+    }
+}
+
+
+/** *************************************************************************  
 *************************** 'C' Public Interface ****************************
 ****************************************************************************/
 
@@ -604,18 +627,23 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_avail_obj, microamp_py_avail);
 /** *************************************************************************   
  * \brief Add a collback function
  * \param callback The handle of the endpoint.
+ * \param arg The arg to pass to the callback.
  * \return the number of bytes available, or < 0 on error.
 ****************************************************************************/
-STATIC mp_obj_t microamp_py_callback(mp_obj_t handle_obj,mp_obj_t callback_obj) 
+STATIC mp_obj_t microamp_py_callback(mp_obj_t handle_obj,mp_obj_t callback_obj,mp_obj_t arg_obj) 
 {
     if ( mp_obj_is_int(handle_obj) )
     {
-        int handle = mp_obj_get_int(handle_obj);
+        int nhandle = mp_obj_get_int(handle_obj);
+        microamp_handle_t* handle = &g_microamp_state->handle[nhandle];
+        handle->endpoint->callback.cb_fn = callback_obj;
+        handle->endpoint->callback.cb_arg = arg_obj;
+        handle->endpoint->callback.cb_thread = b_thread_current();
         return callback_obj;
     }
     return mp_obj_new_int(MICROAMP_ERR_INVAL);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_2(microamp_py_callback_obj, microamp_py_callback);
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_callback_obj, microamp_py_callback);
 
 
 /** *************************************************************************   
