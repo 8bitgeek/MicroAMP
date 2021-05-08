@@ -601,6 +601,22 @@ STATIC mp_obj_t microamp_py_avail(mp_obj_t handle_obj)
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_avail_obj, microamp_py_avail);
 
+/** *************************************************************************   
+ * \brief Add a collback function
+ * \param callback The handle of the endpoint.
+ * \return the number of bytes available, or < 0 on error.
+****************************************************************************/
+STATIC mp_obj_t microamp_py_callback(mp_obj_t handle_obj,mp_obj_t callback_obj) 
+{
+    if ( mp_obj_is_int(handle_obj) )
+    {
+        int handle = mp_obj_get_int(handle_obj);
+        return callback_obj;
+    }
+    return mp_obj_new_int(MICROAMP_ERR_INVAL);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(microamp_py_callback_obj, microamp_py_callback);
+
 
 /** *************************************************************************   
  * Define all properties of the module.
@@ -623,6 +639,7 @@ STATIC const mp_rom_map_elem_t microamp_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_channel_read), MP_ROM_PTR(&microamp_py_read_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_write), MP_ROM_PTR(&microamp_py_write_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_avail), MP_ROM_PTR(&microamp_py_avail_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_callback), MP_ROM_PTR(&microamp_py_callback_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(microamp_module_globals, microamp_module_globals_table);
 
