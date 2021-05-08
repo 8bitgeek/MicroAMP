@@ -39,8 +39,13 @@ extern "C"
 {
 #endif
 
+#if !defined(MICROAMP_MAX_ENDPOINT)
+#define MICROAMP_MAX_ENDPOINT 16  /**< maximum number of endpoint handles */
+#endif
+
 #if !defined(MICROAMP_MAX_HANDLE)
-#define MICROAMP_MAX_HANDLE 16  /**< maximum number of endpoint handles */
+#define MICROAMP_MAX_HANDLE (MICROAMP_MAX_ENDPOINT*2)  
+                                /**< maximum number of endpoint handles */
 #endif
 
 #if !defined(MICROAMP_MAX_NAME)
@@ -66,6 +71,8 @@ typedef struct _microamp_endpoint_
     size_t          shmemsz;
     brisc_mutex_t   mutex;
     size_t          nrefs;
+    size_t          head;
+    size_t          tail;
 } microamp_endpoint_t;
 
 /** *************************************************************************  
@@ -73,8 +80,6 @@ typedef struct _microamp_endpoint_
 ****************************************************************************/
 typedef struct _microamp_handle_
 {
-    size_t          head;
-    size_t          tail;
     microamp_endpoint_t*    endpoint;
 } microamp_handle_t;
 
@@ -83,7 +88,7 @@ typedef struct _microamp_handle_
 ****************************************************************************/
 typedef struct _microamp_state_
 {
-    microamp_endpoint_t**   endpoint;
+    microamp_endpoint_t     endpoint[MICROAMP_MAX_ENDPOINT];
     size_t                  endpointcnt;
     brisc_mutex_t           mutex;
     microamp_handle_t       handle[MICROAMP_MAX_HANDLE];

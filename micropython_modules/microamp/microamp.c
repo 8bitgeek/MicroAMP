@@ -91,7 +91,7 @@ const char* microamp_at(microamp_state_t* microamp_state,int index)
 {
     if ( index < microamp_state->endpointcnt )
     {
-        microamp_endpoint_t* endpoint = microamp_state->endpoint[index];
+        microamp_endpoint_t* endpoint = &microamp_state->endpoint[index];
         return (const char*)endpoint->name;
     }
     return NULL;
@@ -133,7 +133,7 @@ int microamp_open(microamp_state_t* microamp_state,const char* name)
         if ( nhandle >= 0 )
         {
             microamp_handle_t* handle = &microamp_state->handle[nhandle];
-            handle->endpoint = microamp_state->endpoint[nendpoint];
+            handle->endpoint = &microamp_state->endpoint[nendpoint];
             handle->endpoint->nrefs++;
             b_mutex_unlock(&microamp_state->mutex);
             return nhandle;
@@ -153,6 +153,7 @@ int microamp_close(microamp_state_t* microamp_state,int nhandle)
         {
             --handle->endpoint->nrefs;
             memset(handle,0,sizeof(microamp_handle_t));
+            b_mutex_unlock(&microamp_state->mutex);
             return 0;
         }
     }
@@ -205,8 +206,8 @@ extern int microamp_read(microamp_state_t* microamp_state,int nhandle,void* buf,
             for(int n=0; n < size; n++)
             {
                 int t;
-                if ( (t=microamp_ring_get( handle->head,
-                                        handle->tail,
+                if ( (t=microamp_ring_get( handle->endpoint->head,
+                                        handle->endpoint->tail,
                                         (void*)handle->endpoint->shmembase,
                                         handle->endpoint->shmemsz,&p[n]
                                         )) < 0 )
@@ -214,7 +215,7 @@ extern int microamp_read(microamp_state_t* microamp_state,int nhandle,void* buf,
                     b_mutex_unlock(&microamp_state->mutex);
                     return MICROAMP_ERR_UNDFL;
                 }
-                handle->tail = t;
+                handle->endpoint->tail = t;
             }
             b_mutex_unlock(&microamp_state->mutex);
             return size;
@@ -237,8 +238,8 @@ extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const voi
             for(int n=0; n < size; n++)
             {
                 int h;
-                if ( (h=microamp_ring_put( handle->head,
-                                        handle->tail,
+                if ( (h=microamp_ring_put( handle->endpoint->head,
+                                        handle->endpoint->tail,
                                         (void*)handle->endpoint->shmembase,
                                         handle->endpoint->shmemsz,p[n]
                                         )) < 0 )
@@ -246,7 +247,7 @@ extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const voi
                     b_mutex_unlock(&microamp_state->mutex);
                     return MICROAMP_ERR_OVRFL;
                 }
-                handle->head = h;
+                handle->endpoint->head = h;
             }
             b_mutex_unlock(&microamp_state->mutex);
             return size;
@@ -265,8 +266,8 @@ extern int microamp_avail(microamp_state_t* microamp_state,int nhandle)
         handle = &microamp_state->handle[nhandle];
         if ( handle->endpoint )
         {
-            size_t size = microamp_ring_avail( handle->head,
-                                        handle->tail,
+            size_t size = microamp_ring_avail( handle->endpoint->head,
+                                        handle->endpoint->tail,
                                         handle->endpoint->shmemsz);
             b_mutex_unlock(&microamp_state->mutex);
             return size;
@@ -287,25 +288,12 @@ extern int microamp_avail(microamp_state_t* microamp_state,int nhandle)
 ****************************************************************************/
 static microamp_endpoint_t* microamp_new_endpoint(microamp_state_t* microamp_state)
 {
-    b_mutex_lock(&microamp_state->mutex);
-    microamp_endpoint_t* endpoint = (microamp_endpoint_t*)microamp_malloc(sizeof(microamp_endpoint_t));
-    if ( endpoint != NULL )
+    if ( microamp_state->endpointcnt < MICROAMP_MAX_ENDPOINT )
     {
-        microamp_endpoint_t** pp_endpoint;
-        pp_endpoint = (microamp_endpoint_t**)microamp_realloc( microamp_state->endpoint,
-                            sizeof(microamp_endpoint_t*) * ++microamp_state->endpointcnt );
-        if ( pp_endpoint != NULL )
-        {
-            microamp_state->endpoint = pp_endpoint;
-            microamp_state->endpoint[microamp_state->endpointcnt-1] = endpoint;
-            memset(endpoint,0,sizeof(microamp_endpoint_t));
-            b_mutex_unlock(&microamp_state->mutex);
-            return endpoint;
-        }
-        --microamp_state->endpointcnt;
-        microamp_free(endpoint);
+        microamp_endpoint_t* endpoint = &microamp_state->endpoint[microamp_state->endpointcnt++];
+        memset(endpoint,0,sizeof(microamp_endpoint_t));
+        return endpoint;
     }
-    b_mutex_unlock(&microamp_state->mutex);
     return NULL;
 }
 
@@ -334,7 +322,7 @@ static int microamp_lookup(microamp_state_t* microamp_state,const char* name)
 {
     for( int index=0; index < microamp_state->endpointcnt; index++ )
     {
-        microamp_endpoint_t* endpoint = microamp_state->endpoint[index];
+        microamp_endpoint_t* endpoint = &microamp_state->endpoint[index];
         if ( strcmp(endpoint->name,name) == 0 )
         {
             return index;
