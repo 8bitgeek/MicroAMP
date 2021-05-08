@@ -51,6 +51,7 @@ static int microamp_get_empty_handle(microamp_state_t* microamp_state);
 static int microamp_lookup(microamp_state_t* microamp_state,const char* name);
 static int microamp_ring_put(size_t head, size_t tail, uint8_t* buf, size_t size, uint8_t ch);
 static int microamp_ring_get(size_t head, size_t tail, const uint8_t* buf, size_t size, uint8_t* ch);
+static int microamp_ring_ready(size_t head, size_t tail, size_t size);
 
 /** *************************************************************************  
  * \note \ref g_microamp_state is Kind of a dirty hack for now to provide a 
@@ -75,6 +76,25 @@ int microamp_indexof(microamp_state_t* microamp_state,const char* name)
     int index = microamp_lookup(microamp_state,name);
     b_mutex_unlock(&microamp_state->mutex);
     return index;
+}
+
+int microamp_count(microamp_state_t* microamp_state)
+{
+    int cnt;
+    b_mutex_lock(&microamp_state->mutex);
+    cnt = microamp_state->endpointcnt;
+    b_mutex_unlock(&microamp_state->mutex);
+    return cnt;
+}
+
+const char* microamp_at(microamp_state_t* microamp_state,int index)
+{
+    if ( index < microamp_state->endpointcnt )
+    {
+        microamp_endpoint_t* endpoint = microamp_state->endpoint[index];
+        return (const char*)endpoint->name;
+    }
+    return NULL;
 }
 
 int microamp_create(microamp_state_t* microamp_state,const char* name,size_t size)
@@ -196,6 +216,7 @@ extern int microamp_read(microamp_state_t* microamp_state,int nhandle,void* buf,
                 }
                 handle->tail = t;
             }
+            b_mutex_unlock(&microamp_state->mutex);
             return size;
         }
     }
@@ -227,6 +248,7 @@ extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const voi
                 }
                 handle->head = h;
             }
+            b_mutex_unlock(&microamp_state->mutex);
             return size;
         }
     }
@@ -234,6 +256,25 @@ extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const voi
     return MICROAMP_ERR_NONE;
 }
 
+extern int microamp_ready(microamp_state_t* microamp_state,int nhandle)
+{
+    microamp_handle_t* handle;
+    b_mutex_lock(&microamp_state->mutex);
+    if ( nhandle >= 0 && nhandle < MICROAMP_MAX_HANDLE )
+    {
+        handle = &microamp_state->handle[nhandle];
+        if ( handle->endpoint )
+        {
+            size_t size = microamp_ring_ready( handle->head,
+                                        handle->tail,
+                                        handle->endpoint->shmemsz);
+            b_mutex_unlock(&microamp_state->mutex);
+            return size;
+        }
+    }
+    b_mutex_unlock(&microamp_state->mutex);
+    return MICROAMP_ERR_NONE;
+}
 
 /** *************************************************************************  
 *************************** 'C' Static Interface ****************************
@@ -338,6 +379,26 @@ static int microamp_ring_get(size_t head, size_t tail, const uint8_t* buf, size_
     return (int)tail;
 }
 
+/** *************************************************************************  
+ * \brief Calculate the tail pointer for a ring buffer 'get' operation.
+ * \param head The current head pointer
+ * \param tail The current tail pointer
+ * \param buf the buffer 
+ * \param size the size of the buffer. 
+ * \return The updated tail pointer of < 0 on underflow
+****************************************************************************/
+static int microamp_ring_ready(size_t head, size_t tail, size_t size)
+{
+    if ( head!=tail )
+    {
+        if ( head > tail )
+            return head-tail;
+        
+        return (size-tail) + head;
+    }
+    return 0;
+}
+
 
 /** *************************************************************************  
 *************************** Python Static Interface *************************
@@ -380,6 +441,30 @@ STATIC mp_obj_t microamp_py_indexof(mp_obj_t name_obj)
     return mp_obj_new_int(MICROAMP_ERR_INVAL);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_indexof_obj, microamp_py_indexof);
+
+
+/** *************************************************************************   
+ * \return The number of endpoints.
+****************************************************************************/
+STATIC mp_obj_t microamp_py_count() 
+{
+    return mp_obj_new_int( microamp_count( g_microamp_state) );
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_0(microamp_py_count_obj, microamp_py_count);
+
+
+/** *************************************************************************   
+ * \param index the index of the endpoint to query.
+ * \return the endpoint at \ref index.
+****************************************************************************/
+STATIC mp_obj_t microamp_py_at(mp_obj_t index_obj) 
+{
+    const char* str = microamp_at(g_microamp_state,mp_obj_get_int(index_obj));
+    if ( str )
+        return mp_obj_new_str(str,strlen(str));
+    return mp_obj_new_str("",0);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_at_obj, microamp_py_at);
 
 
 /** *************************************************************************   
@@ -435,7 +520,6 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_lock_obj, microamp_py_lock);
 
 /** *************************************************************************   
  * \brief unlock the buffer semaphore.
- * \param microamp_state A pointer to the microamp state.
  * \param nhandle The handle of the endpoint.
  * \return 0 upon success, or < 0 indicates and error condition.
 ****************************************************************************/
@@ -453,7 +537,6 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_unlock_obj, microamp_py_unlock);
 
 /** *************************************************************************   
  * \brief Non-blocking, lock the buffer semaphore.
- * \param microamp_state A pointer to the microamp state.
  * \param nhandle The handle of the endpoint.
  * \return 0 upon success, or < 0 indicates and error condition.
 ****************************************************************************/
@@ -493,7 +576,6 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_read_obj, microamp_py_read);
 
 /** *************************************************************************   
  * \brief Write bytes to the endpoint associated with \ref nhandle.
- * \param microamp_state A pointer to the microamp state.
  * \param nhandle The handle of the endpoint.
  * \param buffer A pointer to the write storage buffer area.
  * \param size The maximum size to write.
@@ -515,6 +597,24 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_write_obj, microamp_py_write);
 
 
 /** *************************************************************************   
+ * \brief Number of bytes available bytes to the endpoint associated 
+ *        with \ref nhandle.
+ * \param nhandle The handle of the endpoint.
+ * \return the number of bytes available, or < 0 on error.
+****************************************************************************/
+STATIC mp_obj_t microamp_py_ready(mp_obj_t handle_obj) 
+{
+    if ( mp_obj_is_int(handle_obj) )
+    {
+        int handle = mp_obj_get_int(handle_obj);
+        return mp_obj_new_int( microamp_ready(g_microamp_state,handle) );
+    }
+    return mp_obj_new_int(MICROAMP_ERR_INVAL);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_ready_obj, microamp_py_ready);
+
+
+/** *************************************************************************   
  * Define all properties of the module.
  * Table entries are key/value pairs of the attribute name (a string)
  * and the MicroPython object reference.
@@ -523,15 +623,18 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_write_obj, microamp_py_write);
 ****************************************************************************/
 STATIC const mp_rom_map_elem_t microamp_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_microamp) },
-    { MP_ROM_QSTR(MP_QSTR_py_create), MP_ROM_PTR(&microamp_py_create_obj) },
-    { MP_ROM_QSTR(MP_QSTR_py_indexof), MP_ROM_PTR(&microamp_py_indexof_obj) },
-    { MP_ROM_QSTR(MP_QSTR_py_open), MP_ROM_PTR(&microamp_py_open_obj) },
-    { MP_ROM_QSTR(MP_QSTR_py_close), MP_ROM_PTR(&microamp_py_close_obj) },
-    { MP_ROM_QSTR(MP_QSTR_py_lock), MP_ROM_PTR(&microamp_py_lock_obj) },
-    { MP_ROM_QSTR(MP_QSTR_py_unlock), MP_ROM_PTR(&microamp_py_unlock_obj) },
-    { MP_ROM_QSTR(MP_QSTR_py_trylock), MP_ROM_PTR(&microamp_py_trylock_obj) },
-    { MP_ROM_QSTR(MP_QSTR_py_read), MP_ROM_PTR(&microamp_py_read_obj) },
-    { MP_ROM_QSTR(MP_QSTR_py_write), MP_ROM_PTR(&microamp_py_write_obj) },
+    { MP_ROM_QSTR(MP_QSTR_endpoint_create), MP_ROM_PTR(&microamp_py_create_obj) },
+    { MP_ROM_QSTR(MP_QSTR_endpoint_indexof), MP_ROM_PTR(&microamp_py_indexof_obj) },
+    { MP_ROM_QSTR(MP_QSTR_endpoint_count), MP_ROM_PTR(&microamp_py_count_obj) },
+    { MP_ROM_QSTR(MP_QSTR_endpoint_at), MP_ROM_PTR(&microamp_py_at_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_open), MP_ROM_PTR(&microamp_py_open_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_close), MP_ROM_PTR(&microamp_py_close_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_lock), MP_ROM_PTR(&microamp_py_lock_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_unlock), MP_ROM_PTR(&microamp_py_unlock_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_trylock), MP_ROM_PTR(&microamp_py_trylock_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_read), MP_ROM_PTR(&microamp_py_read_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_write), MP_ROM_PTR(&microamp_py_write_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_ready), MP_ROM_PTR(&microamp_py_ready_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(microamp_module_globals, microamp_module_globals_table);
 

@@ -117,6 +117,17 @@ extern int microamp_indexof(microamp_state_t* microamp_state,
                             const char* name);
 
 /** *************************************************************************   
+ * \return Number of endpoints, or < 0 indicates and error condition.
+****************************************************************************/
+extern int microamp_count(microamp_state_t* microamp_state);
+
+/** *************************************************************************   
+ * \param index of the endpoint to query name
+ * \return Number naem of the endpoint at index
+****************************************************************************/
+extern const char* microamp_at(microamp_state_t* microamp_state,int index);
+
+/** *************************************************************************   
  * \brief Open an endpoint by @name
  * \param microamp_state A pointer to the microamp state.
  * \param name The ascii name of the endpoint.
@@ -175,6 +186,15 @@ extern int microamp_read(microamp_state_t* microamp_state,int nhandle,void* buf,
  * \return the number of bytes written, or < 0 on error.
 ****************************************************************************/
 extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const void* buf,size_t size);
+
+/** *************************************************************************   
+ * \brief Number of bytes available bytes to the endpoint associated 
+ *        with \ref nhandle.
+ * \param microamp_state A pointer to the microamp state.
+ * \param nhandle The handle of the endpoint.
+ * \return the number of bytes available, or < 0 on error.
+****************************************************************************/
+extern int microamp_ready(microamp_state_t* microamp_state,int nhandle);
 
 #ifdef __cplusplus
 }
