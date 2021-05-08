@@ -194,7 +194,7 @@ extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const voi
  * \param nhandle The handle of the endpoint.
  * \return the number of bytes available, or < 0 on error.
 ****************************************************************************/
-extern int microamp_ready(microamp_state_t* microamp_state,int nhandle);
+extern int microamp_avail(microamp_state_t* microamp_state,int nhandle);
 
 #ifdef __cplusplus
 }
