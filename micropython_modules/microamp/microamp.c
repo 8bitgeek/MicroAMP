@@ -68,23 +68,51 @@ void microamp_poll_hook(void)
 
     for(int nenadpoint=0; nenadpoint < g_microamp_state->endpointcnt; nenadpoint++)
     {
-        microamp_endpoint_t* endpoint = &g_microamp_state->endpoint[nenadpoint];
+        volatile microamp_endpoint_t* endpoint = &g_microamp_state->endpoint[nenadpoint];
+        
+        /** Handle the Python-side events */
         if ( endpoint->dataready_event.py_fn || endpoint->dataempty_event.py_fn )
         {
             size_t avail;
-            b_mutex_lock(&endpoint->mutex);
+            
+            b_mutex_lock((brisc_mutex_t*)&endpoint->mutex);
             avail = microamp_ring_avail(endpoint->head,endpoint->tail,endpoint->shmemsz);
-            b_mutex_unlock(&endpoint->mutex);
+            endpoint->dataempty = !avail;
+            b_mutex_unlock((brisc_mutex_t*)&endpoint->mutex);
+
             if ( avail && endpoint->dataready_event.py_fn )
             {
                 mp_call_function_1(endpoint->dataready_event.py_fn,endpoint->dataready_event.py_arg);
             }
-            else
-            if ( !avail && endpoint->dataempty_event.py_fn )
+
+            if ( !avail && endpoint->dataempty && endpoint->dataempty_event.py_fn )
             {
                 mp_call_function_1(endpoint->dataempty_event.py_fn,endpoint->dataempty_event.py_arg);
             }
         }
+
+        /** Handle the 'C' side events */
+        if ( (endpoint->dataready_event.c_fn || endpoint->dataempty_event.c_fn) )
+        {
+            size_t avail;
+            
+            b_mutex_lock((brisc_mutex_t*)&endpoint->mutex);
+            avail = microamp_ring_avail(endpoint->head,endpoint->tail,endpoint->shmemsz);
+            endpoint->dataempty = !avail;
+            b_mutex_unlock((brisc_mutex_t*)&endpoint->mutex);
+
+            if ( avail && endpoint->dataready_event.c_fn )
+            {
+                endpoint->dataready_event.c_fn(endpoint->dataready_event.c_arg);
+            }
+
+            if ( !avail && endpoint->dataempty && endpoint->dataempty_event.c_fn )
+            {
+                endpoint->dataempty_event.c_fn(endpoint->dataempty_event.c_arg);
+            }
+        }
+
+
     }
 }
 
@@ -245,6 +273,8 @@ extern int microamp_read(microamp_state_t* microamp_state,int nhandle,void* buf,
                     return MICROAMP_ERR_UNDFL;
                 }
                 handle->endpoint->tail = t;
+                if ( microamp_ring_avail( handle->endpoint->head, handle->endpoint->tail, handle->endpoint->shmemsz ) == 0 )
+                    handle->endpoint->dataempty = true;
             }
             b_mutex_unlock(&microamp_state->mutex);
             return size;
@@ -277,6 +307,9 @@ extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const voi
                     return MICROAMP_ERR_OVRFL;
                 }
                 handle->endpoint->head = h;
+                if ( microamp_ring_avail( handle->endpoint->head, handle->endpoint->tail, handle->endpoint->shmemsz ) > 0 )
+                    handle->endpoint->dataempty = false;
+                handle->endpoint->dataempty_event.writer_thread = b_thread_current();
             }
             b_mutex_unlock(&microamp_state->mutex);
             return size;
@@ -305,6 +338,39 @@ extern int microamp_avail(microamp_state_t* microamp_state,int nhandle)
     b_mutex_unlock(&microamp_state->mutex);
     return MICROAMP_ERR_NONE;
 }
+
+extern int microamp_dataready_handler(microamp_state_t* microamp_state,int nhandle,void(*fn)(void*),void* arg)
+{
+    microamp_handle_t* handle;
+    b_mutex_lock(&microamp_state->mutex);
+    handle = &microamp_state->handle[nhandle];
+    if ( handle->endpoint )
+    {
+        handle->endpoint->dataready_event.c_fn = fn;
+        handle->endpoint->dataready_event.c_arg = arg;
+        b_mutex_unlock(&microamp_state->mutex);
+        return 0;
+    }
+    b_mutex_unlock(&microamp_state->mutex);
+    return MICROAMP_ERR_NONE;
+}
+
+extern int microamp_dataempty_handler(microamp_state_t* microamp_state,int nhandle,void(*fn)(void*),void* arg)
+{
+    microamp_handle_t* handle;
+    b_mutex_lock(&microamp_state->mutex);
+    handle = &microamp_state->handle[nhandle];
+    if ( handle->endpoint )
+    {
+        handle->endpoint->dataempty_event.c_fn = fn;
+        handle->endpoint->dataempty_event.c_arg = arg;
+        b_mutex_unlock(&microamp_state->mutex);
+        return 0;
+    }
+    b_mutex_unlock(&microamp_state->mutex);
+    return MICROAMP_ERR_NONE;
+}
+
 
 /** *************************************************************************  
 *************************** 'C' Static Interface ****************************
@@ -603,10 +669,12 @@ STATIC mp_obj_t microamp_py_write(mp_obj_t handle_obj,mp_obj_t buffer_obj,mp_obj
     if ( mp_obj_is_int(handle_obj) )
     {
         size_t buffer_len;
-        int handle = mp_obj_get_int(handle_obj);
+        int nhandle = mp_obj_get_int(handle_obj);
         const uint8_t* buffer = (const uint8_t*)mp_obj_str_get_data(buffer_obj,&buffer_len);
         size_t size = mp_obj_get_int(size_obj);
-        return mp_obj_new_int( microamp_write(g_microamp_state,handle,buffer,size) );
+        microamp_handle_t* handle = &g_microamp_state->handle[nhandle];
+        handle->endpoint->dataempty_event.writer_thread = b_thread_current();
+        return mp_obj_new_int( microamp_write(g_microamp_state,nhandle,buffer,size) );
     }
     return mp_obj_new_int(MICROAMP_ERR_INVAL);
 }
@@ -631,20 +699,19 @@ STATIC mp_obj_t microamp_py_avail(mp_obj_t handle_obj)
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_avail_obj, microamp_py_avail);
 
 /** *************************************************************************   
- * \brief Add a collback function
- * \param callback The handle of the endpoint.
+ * \brief Add a dataready event callback
+ * \param callback A function pointer.
  * \param arg The arg to pass to the callback.
  * \return the number of bytes available, or < 0 on error.
 ****************************************************************************/
 STATIC mp_obj_t microamp_py_dataready_handler(mp_obj_t handle_obj,mp_obj_t callback_obj,mp_obj_t arg_obj) 
 {
-    if ( mp_obj_is_int(handle_obj) )
+    if ( mp_obj_is_int(handle_obj) && mp_obj_is_callable(callback_obj) )
     {
         int nhandle = mp_obj_get_int(handle_obj);
         microamp_handle_t* handle = &g_microamp_state->handle[nhandle];
         handle->endpoint->dataready_event.py_fn = callback_obj;
         handle->endpoint->dataready_event.py_arg = arg_obj;
-        handle->endpoint->dataready_event.thread = b_thread_current();
         return callback_obj;
     }
     return mp_obj_new_int(MICROAMP_ERR_INVAL);
@@ -653,20 +720,19 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_dataready_handler_obj, microamp_py_
 
 
 /** *************************************************************************   
- * \brief Add a collback function
- * \param callback The handle of the endpoint.
+ * \brief Add a dataempty event callback
+ * \param callback A function pointer.
  * \param arg The arg to pass to the callback.
  * \return the number of bytes available, or < 0 on error.
 ****************************************************************************/
 STATIC mp_obj_t microamp_py_dataempty_handler(mp_obj_t handle_obj,mp_obj_t callback_obj,mp_obj_t arg_obj) 
 {
-    if ( mp_obj_is_int(handle_obj) )
+    if ( mp_obj_is_int(handle_obj) && mp_obj_is_callable(callback_obj) )
     {
         int nhandle = mp_obj_get_int(handle_obj);
         microamp_handle_t* handle = &g_microamp_state->handle[nhandle];
         handle->endpoint->dataempty_event.py_fn = callback_obj;
         handle->endpoint->dataempty_event.py_arg = arg_obj;
-        handle->endpoint->dataempty_event.thread = b_thread_current();
         return callback_obj;
     }
     return mp_obj_new_int(MICROAMP_ERR_INVAL);

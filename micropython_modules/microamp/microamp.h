@@ -68,10 +68,9 @@ typedef struct _microamp_callback_
 {
     mp_obj_t                    py_fn;
     mp_obj_t                    py_arg;
-    void                        (*c_fn)(void);
+    void                        (*c_fn)(void*);
     void*                       c_arg;
-    volatile brisc_thread_t*    thread;
-
+    volatile brisc_thread_t*    writer_thread;
 } microamp_callback_t;
 
 /** *************************************************************************  
@@ -79,15 +78,16 @@ typedef struct _microamp_callback_
 ****************************************************************************/
 typedef struct _microamp_endpoint_
 {
-    char            name[MICROAMP_MAX_NAME+1];
-    size_t          shmembase;
-    size_t          shmemsz;
-    brisc_mutex_t   mutex;
-    size_t          nrefs;
-    size_t          head;
-    size_t          tail;
+    char                    name[MICROAMP_MAX_NAME+1];
+    size_t                  shmembase;
+    size_t                  shmemsz;
+    brisc_mutex_t           mutex;
+    size_t                  nrefs;
+    size_t                  head;
+    size_t                  tail;
     microamp_callback_t     dataready_event;
     microamp_callback_t     dataempty_event;
+    bool                    dataempty;
 } microamp_endpoint_t;
 
 /** *************************************************************************  
@@ -220,6 +220,24 @@ extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const voi
  * \return the number of bytes available, or < 0 on error.
 ****************************************************************************/
 extern int microamp_avail(microamp_state_t* microamp_state,int nhandle);
+
+/** *************************************************************************   
+ * \brief Add a dataready event callback
+ * \param microamp_state A pointer to the microamp state.
+ * \param callback A function pointer.
+ * \param arg The arg to pass to the callback.
+ * \return 0 or < 0 on error.
+****************************************************************************/
+extern int microamp_dataready_handler(microamp_state_t* microamp_state,int nhandle,void(*fn)(void*),void* arg);
+
+/** *************************************************************************   
+ * \brief Add a dataempty event callback
+ * \param callback A function pointer.
+ * \param arg The arg to pass to the callback.
+ * \return the number of bytes available, or < 0 on error.
+****************************************************************************/
+extern int microamp_dataempty_handler(microamp_state_t* microamp_state,int nhandle,void(*fn)(void*),void* arg);
+
 
 #ifdef __cplusplus
 }
