@@ -66,9 +66,12 @@ extern "C"
 ****************************************************************************/
 typedef struct _microamp_callback_
 {
-    mp_obj_t                    cb_fn;
-    mp_obj_t                    cb_arg;
-    volatile brisc_thread_t*    cb_thread;
+    mp_obj_t                    py_fn;
+    mp_obj_t                    py_arg;
+    void                        (*c_fn)(void);
+    void*                       c_arg;
+    volatile brisc_thread_t*    thread;
+
 } microamp_callback_t;
 
 /** *************************************************************************  
@@ -83,7 +86,8 @@ typedef struct _microamp_endpoint_
     size_t          nrefs;
     size_t          head;
     size_t          tail;
-    microamp_callback_t     callback;
+    microamp_callback_t     dataready_event;
+    microamp_callback_t     dataempty_event;
 } microamp_endpoint_t;
 
 /** *************************************************************************  
