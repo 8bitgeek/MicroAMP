@@ -69,14 +69,20 @@ void microamp_poll_hook(void)
     for(int nenadpoint=0; nenadpoint < g_microamp_state->endpointcnt; nenadpoint++)
     {
         microamp_endpoint_t* endpoint = &g_microamp_state->endpoint[nenadpoint];
-        if ( endpoint->callback.cb_fn )
+        if ( endpoint->dataready_event.py_fn || endpoint->dataempty_event.py_fn )
         {
             size_t avail;
-            brisc_mutex_lock(&endpoint->->mutex);
+            b_mutex_lock(&endpoint->mutex);
             avail = microamp_ring_avail(endpoint->head,endpoint->tail,endpoint->shmemsz);
-            if ( avail )
+            b_mutex_unlock(&endpoint->mutex);
+            if ( avail && endpoint->dataready_event.py_fn )
             {
-                mp_call_function_1(endpoint->callback.cb_fn,endpoint->callback.cb_arg);
+                mp_call_function_1(endpoint->dataready_event.py_fn,endpoint->dataready_event.py_arg);
+            }
+            else
+            if ( !avail && endpoint->dataempty_event.py_fn )
+            {
+                mp_call_function_1(endpoint->dataempty_event.py_fn,endpoint->dataempty_event.py_arg);
             }
         }
     }
@@ -630,20 +636,42 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_avail_obj, microamp_py_avail);
  * \param arg The arg to pass to the callback.
  * \return the number of bytes available, or < 0 on error.
 ****************************************************************************/
-STATIC mp_obj_t microamp_py_callback(mp_obj_t handle_obj,mp_obj_t callback_obj,mp_obj_t arg_obj) 
+STATIC mp_obj_t microamp_py_dataready_handler(mp_obj_t handle_obj,mp_obj_t callback_obj,mp_obj_t arg_obj) 
 {
     if ( mp_obj_is_int(handle_obj) )
     {
         int nhandle = mp_obj_get_int(handle_obj);
         microamp_handle_t* handle = &g_microamp_state->handle[nhandle];
-        handle->endpoint->callback.cb_fn = callback_obj;
-        handle->endpoint->callback.cb_arg = arg_obj;
-        handle->endpoint->callback.cb_thread = b_thread_current();
+        handle->endpoint->dataready_event.py_fn = callback_obj;
+        handle->endpoint->dataready_event.py_arg = arg_obj;
+        handle->endpoint->dataready_event.thread = b_thread_current();
         return callback_obj;
     }
     return mp_obj_new_int(MICROAMP_ERR_INVAL);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_callback_obj, microamp_py_callback);
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_dataready_handler_obj, microamp_py_dataready_handler);
+
+
+/** *************************************************************************   
+ * \brief Add a collback function
+ * \param callback The handle of the endpoint.
+ * \param arg The arg to pass to the callback.
+ * \return the number of bytes available, or < 0 on error.
+****************************************************************************/
+STATIC mp_obj_t microamp_py_dataempty_handler(mp_obj_t handle_obj,mp_obj_t callback_obj,mp_obj_t arg_obj) 
+{
+    if ( mp_obj_is_int(handle_obj) )
+    {
+        int nhandle = mp_obj_get_int(handle_obj);
+        microamp_handle_t* handle = &g_microamp_state->handle[nhandle];
+        handle->endpoint->dataempty_event.py_fn = callback_obj;
+        handle->endpoint->dataempty_event.py_arg = arg_obj;
+        handle->endpoint->dataempty_event.thread = b_thread_current();
+        return callback_obj;
+    }
+    return mp_obj_new_int(MICROAMP_ERR_INVAL);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_dataempty_handler_obj, microamp_py_dataempty_handler);
 
 
 /** *************************************************************************   
@@ -667,7 +695,8 @@ STATIC const mp_rom_map_elem_t microamp_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_channel_read), MP_ROM_PTR(&microamp_py_read_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_write), MP_ROM_PTR(&microamp_py_write_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_avail), MP_ROM_PTR(&microamp_py_avail_obj) },
-    { MP_ROM_QSTR(MP_QSTR_channel_callback), MP_ROM_PTR(&microamp_py_callback_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_dataready_handler), MP_ROM_PTR(&microamp_py_dataready_handler_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_dataempty_handler), MP_ROM_PTR(&microamp_py_dataempty_handler_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(microamp_module_globals, microamp_module_globals_table);
 
