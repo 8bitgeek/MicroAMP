@@ -682,6 +682,60 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_3(microamp_py_write_obj, microamp_py_write);
 
 
 /** *************************************************************************   
+ * \brief Read bytes from the endpoint associated with \ref nhandle.
+ * \param nhandle The handle of the endpoint
+ * \return the number of bytes read, or < 0 on error.
+****************************************************************************/
+STATIC mp_obj_t microamp_py_get(mp_obj_t handle_obj) 
+{
+    if ( mp_obj_is_int(handle_obj) )
+    {
+        int nhandle = mp_obj_get_int(handle_obj);
+        size_t bytes_len = microamp_avail(g_microamp_state,nhandle);
+        byte* bytes_ptr = m_new(byte, bytes_len + 1);
+        int bytes_got = microamp_read(g_microamp_state,nhandle,bytes_ptr,bytes_len);
+        if ( bytes_got >= 0 )
+        {
+            mp_obj_t result = mp_obj_new_bytes(bytes_ptr,bytes_got);
+            m_free(bytes_ptr);
+            return result;
+        }
+    }
+    return mp_obj_new_bytes((const byte*)"",0);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(microamp_py_get_obj, microamp_py_get);
+
+
+/** *************************************************************************   
+ * \brief Write bytes to the endpoint associated with \ref nhandle.
+ * \param nhandle The handle of the endpoint.
+ * \param buffer A pointer to the write storage buffer area.
+ * \return the number of bytes written, or < 0 on error.
+****************************************************************************/
+STATIC mp_obj_t microamp_py_put(mp_obj_t handle_obj,mp_obj_t buffer_obj) 
+{
+    if ( mp_obj_is_int(handle_obj) )
+    {
+        int nhandle = mp_obj_get_int(handle_obj);
+        if ( nhandle >= 0 && nhandle < MICROAMP_MAX_HANDLE)
+        {
+            if ( /* mp_obj_is_str_or_bytes(buffer_obj) */ 1 )
+            {
+                size_t bytes_got;
+                microamp_handle_t* handle = &g_microamp_state->handle[nhandle]; 
+                const uint8_t* bytes_ptr = (const uint8_t*)mp_obj_str_get_data(buffer_obj,&bytes_got);
+                handle->endpoint->dataempty_event.writer_thread = b_thread_current();
+                if ( microamp_write(g_microamp_state,nhandle,bytes_ptr,bytes_got) >= 0 )
+                    return  mp_obj_new_bytes(bytes_ptr,bytes_got);
+            }
+        }
+    }
+    return mp_obj_new_bytes((const byte*)"",0);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(microamp_py_put_obj, microamp_py_put);
+
+
+/** *************************************************************************   
  * \brief Number of bytes available bytes to the endpoint associated 
  *        with \ref nhandle.
  * \param nhandle The handle of the endpoint.
@@ -760,6 +814,8 @@ STATIC const mp_rom_map_elem_t microamp_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_channel_trylock), MP_ROM_PTR(&microamp_py_trylock_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_read), MP_ROM_PTR(&microamp_py_read_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_write), MP_ROM_PTR(&microamp_py_write_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_get), MP_ROM_PTR(&microamp_py_get_obj) },
+    { MP_ROM_QSTR(MP_QSTR_channel_put), MP_ROM_PTR(&microamp_py_put_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_avail), MP_ROM_PTR(&microamp_py_avail_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_dataready_handler), MP_ROM_PTR(&microamp_py_dataready_handler_obj) },
     { MP_ROM_QSTR(MP_QSTR_channel_dataempty_handler), MP_ROM_PTR(&microamp_py_dataempty_handler_obj) },
