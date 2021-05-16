@@ -44,13 +44,10 @@ extern "C"
 /** *************************************************************************  
  * \brief maintains the state of an endpoint callback.
 ****************************************************************************/
-typedef struct _microamp_callback_
+typedef struct _py_microamp_callback_
 {
     mp_obj_t                    py_fn;
     mp_obj_t                    py_arg;
-    // void                        (*c_fn)(void*);
-    // void*                       c_arg;
-    // volatile brisc_thread_t*    writer_thread;
 } py_microamp_callback_t;
 
 #ifdef __cplusplus

@@ -8,6 +8,7 @@ target_sources(usermod_microamp INTERFACE
 
 # Add the current directory as an include directory.
 target_include_directories(usermod_microamp INTERFACE
+    ${CMAKE_CURRENT_LIST_DIR}/../../src
     ${CMAKE_CURRENT_LIST_DIR}
 )
 

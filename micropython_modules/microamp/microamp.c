@@ -35,7 +35,7 @@ SOFTWARE.
  * \note \ref g_microamp_state is Kind of a dirty hack for now to provide a 
  * global interface to the microamp_state to the python interface.
 ****************************************************************************/
-extern microamp_state_t* g_microamp_state=NULL;
+extern microamp_state_t* g_microamp_state;
 
 
 /** *************************************************************************  

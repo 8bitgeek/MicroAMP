@@ -66,8 +66,8 @@ extern "C"
 ****************************************************************************/
 typedef struct _microamp_callback_
 {
-    // mp_obj_t                    py_fn;
-    // mp_obj_t                    py_arg;
+    void* /* mp_obj_t */        py_fn;
+    void* /* mp_obj_t */        py_arg;
     void                        (*py_microamppoll_hook_fn)(void);
     void                        (*c_fn)(void*);
     void*                       c_arg;
@@ -110,8 +110,29 @@ typedef struct _microamp_state_
     microamp_handle_t       handle[MICROAMP_MAX_HANDLE];
 } microamp_state_t;
 
+
+
+/** *************************************************************************  
+**************************** Commmon Utilities ****************************** 
+****************************************************************************/
+
+/** *************************************************************************  
+ * \brief Calculate the tail pointer for a ring buffer 'get' operation.
+ * \param head The current head pointer
+ * \param tail The current tail pointer
+ * \param buf the buffer 
+ * \param size the size of the buffer. 
+ * \return The updated tail pointer of < 0 on underflow
+****************************************************************************/
+extern int microamp_ring_avail(size_t head, size_t tail, size_t size);
+
+
 /** *************************************************************************  
 *************************** Poll For I/O Events ***************************** 
+****************************************************************************/
+
+/** *************************************************************************  
+ * \brief Called frequently in event loop to dispatch events
 ****************************************************************************/
 extern void microamp_poll_hook(void);
 

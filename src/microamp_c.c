@@ -51,13 +51,12 @@ static int microamp_get_empty_handle(microamp_state_t* microamp_state);
 static int microamp_lookup(microamp_state_t* microamp_state,const char* name);
 static int microamp_ring_put(size_t head, size_t tail, uint8_t* buf, size_t size, uint8_t ch);
 static int microamp_ring_get(size_t head, size_t tail, const uint8_t* buf, size_t size, uint8_t* ch);
-static int microamp_ring_avail(size_t head, size_t tail, size_t size);
 
 /** *************************************************************************  
  * \note \ref g_microamp_state is Kind of a dirty hack for now to provide a 
  * global interface to the microamp_state to the python interface.
 ****************************************************************************/
-static microamp_state_t* g_microamp_state=NULL;
+microamp_state_t* g_microamp_state=NULL;
 
 
 /** *************************************************************************  
@@ -462,15 +461,7 @@ static int microamp_ring_get(size_t head, size_t tail, const uint8_t* buf, size_
     return (int)tail;
 }
 
-/** *************************************************************************  
- * \brief Calculate the tail pointer for a ring buffer 'get' operation.
- * \param head The current head pointer
- * \param tail The current tail pointer
- * \param buf the buffer 
- * \param size the size of the buffer. 
- * \return The updated tail pointer of < 0 on underflow
-****************************************************************************/
-static int microamp_ring_avail(size_t head, size_t tail, size_t size)
+extern int microamp_ring_avail(size_t head, size_t tail, size_t size)
 {
     if ( head!=tail )
     {
