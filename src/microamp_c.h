@@ -71,7 +71,6 @@ typedef struct _microamp_callback_
     void                        (*py_microamppoll_hook_fn)(void);
     void                        (*c_fn)(void*);
     void*                       c_arg;
-    volatile brisc_thread_t*    writer_thread;
 } microamp_callback_t;
 
 /** *************************************************************************  

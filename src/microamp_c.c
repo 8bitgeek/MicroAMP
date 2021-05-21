@@ -308,7 +308,6 @@ extern int microamp_write(microamp_state_t* microamp_state,int nhandle,const voi
                 handle->endpoint->head = h;
                 if ( microamp_ring_avail( handle->endpoint->head, handle->endpoint->tail, handle->endpoint->shmemsz ) > 0 )
                     handle->endpoint->dataempty = false;
-                handle->endpoint->dataempty_event.writer_thread = b_thread_current();
             }
             b_mutex_unlock(&microamp_state->mutex);
             return size;

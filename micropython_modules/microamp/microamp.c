@@ -261,8 +261,6 @@ STATIC mp_obj_t microamp_py_write(mp_obj_t handle_obj,mp_obj_t buffer_obj,mp_obj
         int nhandle = mp_obj_get_int(handle_obj);
         const uint8_t* buffer = (const uint8_t*)mp_obj_str_get_data(buffer_obj,&buffer_len);
         size_t size = mp_obj_get_int(size_obj);
-        microamp_handle_t* handle = &g_microamp_state->handle[nhandle];
-        handle->endpoint->dataempty_event.writer_thread = b_thread_current();
         return mp_obj_new_int( microamp_write(g_microamp_state,nhandle,buffer,size) );
     }
     return mp_obj_new_int(MICROAMP_ERR_INVAL);
@@ -315,9 +313,7 @@ STATIC mp_obj_t microamp_py_put(mp_obj_t handle_obj,mp_obj_t buffer_obj)
             if ( /* mp_obj_is_str_or_bytes(buffer_obj) */ 1 )
             {
                 size_t bytes_got;
-                microamp_handle_t* handle = &g_microamp_state->handle[nhandle]; 
                 const uint8_t* bytes_ptr = (const uint8_t*)mp_obj_str_get_data(buffer_obj,&bytes_got);
-                handle->endpoint->dataempty_event.writer_thread = b_thread_current();
                 if ( microamp_write(g_microamp_state,nhandle,bytes_ptr,bytes_got) >= 0 )
                     return  mp_obj_new_bytes(bytes_ptr,bytes_got);
             }
