@@ -282,12 +282,16 @@ STATIC mp_obj_t microamp_py_get(mp_obj_t handle_obj)
         int nhandle = mp_obj_get_int(handle_obj);
         size_t bytes_len = microamp_avail(g_microamp_state,nhandle);
         byte* bytes_ptr = m_new(byte, bytes_len + 1);
-        int bytes_got = microamp_read(g_microamp_state,nhandle,bytes_ptr,bytes_len);
-        if ( bytes_got >= 0 )
+        if ( bytes_ptr )
         {
-            mp_obj_t result = mp_obj_new_bytes(bytes_ptr,bytes_got);
+            int bytes_got = microamp_read(g_microamp_state,nhandle,bytes_ptr,bytes_len);
+            if ( bytes_got >= 0 )
+            {
+                mp_obj_t result = mp_obj_new_bytes(bytes_ptr,bytes_got);
+                m_free(bytes_ptr);
+                return result;
+            }
             m_free(bytes_ptr);
-            return result;
         }
     }
     return mp_obj_new_bytes((const byte*)"",0);
